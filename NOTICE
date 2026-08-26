@@ -1,0 +1,12 @@
+goname
+Copyright 2026 goname contributors
+
+This project is a Go implementation based on Dustin Kirkland's petname
+codebase and includes its dictionaries:
+https://github.com/dustinkirkland/petname
+
+Upstream petname is Copyright 2014 Dustin Kirkland and licensed under the
+Apache License, Version 2.0.
+
+The bundled dictionaries are copied from upstream petname 2.11 at commit
+70ed924cb96c290ac051b8ae797417c4adbbb5c9.
