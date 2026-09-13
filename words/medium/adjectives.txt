@@ -468,6 +468,7 @@ fulfilled
 fulfilling
 full
 fun
+funky
 funny
 gainful
 gallant

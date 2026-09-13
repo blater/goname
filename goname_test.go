@@ -195,9 +195,9 @@ func TestBuiltInWordListsMatchPinnedCopies(t *testing.T) {
 		"large/adjectives.txt":  "8a36e132c66fc2a879770dfc1f73f2a11b454194ca75f3f0fde3e6922965608c",
 		"large/adverbs.txt":     "95b8d19579711acc199a3a6a6e102d5abd3d2df57bc052166d6009f651241591",
 		"large/names.txt":       "6e0db1b0619462388115fb2ae26277db4391052f6161842c15f8d8189078a14c",
-		"medium/adjectives.txt": "b1cd54d8f27d4514aaa9bbf4a8248b696867b63b75ffcbe49b277227e2875a13",
+		"medium/adjectives.txt": "3b91020cc035b00b912f7cfb0b77a66a8465ee1e3dd1880b246699b57e703f2b",
 		"medium/adverbs.txt":    "c19e6fc3d06acf6d5a3812772f60012e443cc96f41e63c5e88e0007e7111646c",
-		"medium/names.txt":      "0f37daddd7e68ba01240032188b542d32a838f2352197d04c1bb0f46a22f647a",
+		"medium/names.txt":      "2d929c68b1e1e431ab7eff914514e8ea7f70d05e54d2fb3d9a9d6c90deb7a0c9",
 		"small/adjectives.txt":  "5f934ce94a217b85aec434d6803c6fc5b74628d10d83c4d0ddfdec9256e062b0",
 		"small/adverbs.txt":     "f22baacc9c281e6e13daea8dcc8d204c5ad08b26d0c4cd5a1ea0e6e1e782b445",
 		"small/names.txt":       "a15d352808bda5b983dad1d68d71f97dd5819c28fe5779169e8ce9c82f0aff6b",
@@ -211,6 +211,28 @@ func TestBuiltInWordListsMatchPinnedCopies(t *testing.T) {
 		got := fmt.Sprintf("%x", sha256.Sum256(data))
 		if got != want {
 			t.Errorf("hash(%q) = %s, want %s", path, got, want)
+		}
+	}
+}
+
+func TestMediumWordListsIncludeSmallWordLists(t *testing.T) {
+	for _, category := range []string{"adverbs", "adjectives", "names"} {
+		smallData, err := embeddedWords.ReadFile("words/small/" + category + ".txt")
+		if err != nil {
+			t.Fatalf("ReadFile(small/%s): %v", category, err)
+		}
+		mediumData, err := embeddedWords.ReadFile("words/medium/" + category + ".txt")
+		if err != nil {
+			t.Fatalf("ReadFile(medium/%s): %v", category, err)
+		}
+		mediumWords := make(map[string]struct{})
+		for _, word := range strings.Fields(string(mediumData)) {
+			mediumWords[word] = struct{}{}
+		}
+		for _, word := range strings.Fields(string(smallData)) {
+			if _, ok := mediumWords[word]; !ok {
+				t.Errorf("medium/%s.txt is missing small-list word %q", category, word)
+			}
 		}
 	}
 }

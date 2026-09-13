@@ -544,6 +544,7 @@ mallard
 mamba
 mammal
 mammoth
+man
 manakin
 manatee
 mandrill
