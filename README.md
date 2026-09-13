@@ -2,8 +2,9 @@
 
 Goname is a small, dependency-free Go implementation of
 [Dustin Kirkland's petname](https://github.com/dustinkirkland/petname). It
-generates human-readable random names from adverbs, adjectives, and animal
-names and can be used as either a Go package or a command-line program.
+generates human-readable random names from adverbs, adjectives, and animal,
+character, or place names and can be used as either a Go package or a
+command-line program.
 
 ## Examples
 
@@ -16,6 +17,8 @@ $ goname --ubuntu
 vehement-vulture
 $ goname --adjective
 rapid
+$ goname --strategy tolkien
+ancient-Aragorn
 ```
 
 ## Command-line usage
@@ -23,24 +26,29 @@ rapid
 ```text
 Usage: goname [-w|--words INT] [-l|--letters INT]
                 [-s|--separator STR] [-d|--dir STR]
-                [-c|--complexity INT] [-u|--ubuntu]
+                [-c|--complexity INT] [-t|--strategy STR] [-u|--ubuntu]
 
   -w, --words INT       number of words; default: 2
   -l, --letters INT     maximum letters in each word; default: unlimited
   -s, --separator STR   separator between words; default: -
   -d, --dir DIR         custom word-list directory
   -c, --complexity INT  0=small, 1=medium, 2=large
+  -t, --strategy STR    themed word set: tolkien
   -u, --ubuntu          generate an alliterative name
       --adverb          generate one adverb
       --adjective       generate one adjective
-      --name            generate one animal name
+      --name            generate one name word
   -h, --help            show this help
 ```
 
 Custom dictionary directories contain `adverbs.txt`, `adjectives.txt`, and
 `names.txt`, with one word per line. When a complexity is selected, those
 files are loaded from the corresponding `small`, `medium`, or `large`
-subdirectory.
+subdirectory. `--strategy tolkien` selects Tolkien character and place names
+with themed modifiers. It reuses the small adverb and adjective lists, then
+adds fantasy-flavoured modifiers. A custom word directory supplies complete
+lists from its `tolkien` subdirectory when this strategy is selected. A themed
+strategy cannot be combined with `--complexity`.
 
 ## Go API
 
@@ -75,6 +83,9 @@ func main() {
 	fmt.Println(name)
 }
 ```
+
+For Tolkien names, set `options.Strategy = goname.StrategyTolkien` instead of
+setting a complexity tier. The CLI equivalent is `goname --strategy tolkien`.
 
 `NewGenerator` uses cryptographically secure randomness.
 `NewSeededGenerator` provides deterministic generation, and

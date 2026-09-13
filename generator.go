@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -22,6 +23,12 @@ func validate(options Options) error {
 	}
 	if options.Complexity > ComplexityLarge {
 		return fmt.Errorf("invalid complexity: %d", options.Complexity)
+	}
+	if options.Strategy > StrategyTolkien {
+		return fmt.Errorf("invalid strategy: %d", options.Strategy)
+	}
+	if options.Strategy != StrategyDefault && options.Complexity != ComplexityDefault {
+		return errors.New("a themed strategy cannot be combined with a complexity tier")
 	}
 	return nil
 }
@@ -47,7 +54,7 @@ func (g *Generator) chooseInitial(categories [][]string) (rune, error) {
 	for _, category := range categories {
 		initials := make(map[rune]struct{})
 		for _, word := range category {
-			initial, _ := utf8.DecodeRuneInString(word)
+			initial := normalizedInitial(word)
 			initials[initial] = struct{}{}
 		}
 		if common == nil {
@@ -82,12 +89,17 @@ func (g *Generator) chooseInitial(categories [][]string) (rune, error) {
 func beginningWith(words []string, initial rune) []string {
 	result := make([]string, 0, len(words))
 	for _, word := range words {
-		first, _ := utf8.DecodeRuneInString(word)
+		first := normalizedInitial(word)
 		if first == initial {
 			result = append(result, word)
 		}
 	}
 	return result
+}
+
+func normalizedInitial(word string) rune {
+	initial, _ := utf8.DecodeRuneInString(word)
+	return unicode.ToLower(initial)
 }
 
 func join(words []string, separator string) string {

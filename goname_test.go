@@ -118,6 +118,75 @@ func TestResolvesComplexityBelowCustomDirectory(t *testing.T) {
 	}
 }
 
+func TestTolkienStrategyAddsThemedWordsAndNames(t *testing.T) {
+	options := DefaultOptions()
+	options.Strategy = StrategyTolkien
+	words, err := loadWordLists(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"quickly", "anciently"} {
+		if !containsWord(words.adverbs, want) {
+			t.Errorf("Tolkien adverbs do not contain %q", want)
+		}
+	}
+	for _, want := range []string{"calm", "grandeur", "wielding"} {
+		if !containsWord(words.adjectives, want) {
+			t.Errorf("Tolkien adjectives do not contain %q", want)
+		}
+	}
+	for _, want := range []string{"Aragorn", "Fëanor", "Gandalf", "Lúthien", "Smaug"} {
+		if !containsWord(words.names, want) {
+			t.Errorf("Tolkien names do not contain %q", want)
+		}
+	}
+	for _, category := range []struct {
+		name string
+		base []string
+		got  []string
+	}{
+		{"adverbs", wordsFromSmall(t, "adverbs"), words.adverbs},
+		{"adjectives", wordsFromSmall(t, "adjectives"), words.adjectives},
+	} {
+		for _, word := range category.base {
+			if !containsWord(category.got, word) {
+				t.Errorf("Tolkien %s do not include small-list word %q", category.name, word)
+			}
+		}
+	}
+	seenNames := make(map[string]struct{}, len(words.names))
+	for _, name := range words.names {
+		if _, exists := seenNames[name]; exists {
+			t.Errorf("Tolkien names contain duplicate %q", name)
+		}
+		seenNames[name] = struct{}{}
+	}
+
+	options.Type = TypeName
+	got, err := NewSeededGenerator(7).Generate(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsWord(words.names, got) {
+		t.Fatalf("generated Tolkien name %q is not in the name list", got)
+	}
+}
+
+func TestTolkienStrategyResolvesCustomDirectory(t *testing.T) {
+	directory := t.TempDir()
+	writeWordsAt(t, filepath.Join(directory, "tolkien"), "nobly", "ancient", "Aragorn")
+	options := DefaultOptions()
+	options.Strategy = StrategyTolkien
+	options.WordDirectory = directory
+	got, err := NewSeededGenerator(1).Generate(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "ancient-Aragorn" {
+		t.Fatalf("Generate() = %q, want ancient-Aragorn", got)
+	}
+}
+
 func TestRejectsImpossibleConfigurations(t *testing.T) {
 	directory := writeWords(t, "swiftly", "calm", "otter")
 	tests := []struct {
@@ -131,6 +200,11 @@ func TestRejectsImpossibleConfigurations(t *testing.T) {
 		{"long separator", func(o *Options) { o.Separator = strings.Repeat("🦉", 101) }, "separator must be"},
 		{"invalid type", func(o *Options) { o.Type = Type(99) }, "invalid name type"},
 		{"invalid complexity", func(o *Options) { o.Complexity = Complexity(99) }, "invalid complexity"},
+		{"invalid strategy", func(o *Options) { o.Strategy = Strategy(99) }, "invalid strategy"},
+		{"strategy and complexity", func(o *Options) {
+			o.Strategy = StrategyTolkien
+			o.Complexity = ComplexitySmall
+		}, "cannot be combined with a complexity tier"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -154,6 +228,39 @@ func TestRejectsAlliterationWithoutCommonInitial(t *testing.T) {
 	_, err := NewSeededGenerator(1).Generate(options)
 	if err == nil || !strings.Contains(err.Error(), "no alliterative goname") {
 		t.Fatalf("Generate() error = %v", err)
+	}
+}
+
+func TestAlliterationMatchesCapitalizedWordsCaseInsensitively(t *testing.T) {
+	directory := writeWords(t, "Able", "Agile", "Aragorn")
+	options := DefaultOptions()
+	options.WordDirectory = directory
+	options.Words = 3
+	options.Alliterate = true
+	got, err := NewSeededGenerator(1).Generate(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Able-Agile-Aragorn" {
+		t.Fatalf("Generate() = %q, want Able-Agile-Aragorn", got)
+	}
+}
+
+func TestTolkienStrategyAlliteratesAcrossCapitalizedNames(t *testing.T) {
+	options := DefaultOptions()
+	options.Strategy = StrategyTolkien
+	options.Words = 3
+	options.Alliterate = true
+	got, err := NewSeededGenerator(1).Generate(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(got, options.Separator)
+	initial := normalizedInitial(parts[0])
+	for _, word := range parts[1:] {
+		if normalizedInitial(word) != initial {
+			t.Fatalf("Tolkien name does not alliterate: %q", got)
+		}
 	}
 }
 
@@ -256,4 +363,22 @@ func writeWordsAt(t *testing.T, directory, adverbs, adjectives, names string) {
 			t.Fatal(err)
 		}
 	}
+}
+
+func containsWord(words []string, want string) bool {
+	for _, word := range words {
+		if word == want {
+			return true
+		}
+	}
+	return false
+}
+
+func wordsFromSmall(t *testing.T, category string) []string {
+	t.Helper()
+	data, err := embeddedWords.ReadFile("words/small/" + category + ".txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Fields(string(data))
 }

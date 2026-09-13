@@ -25,6 +25,17 @@ const (
 	ComplexityLarge
 )
 
+// Strategy selects a themed word set independently of the standard complexity
+// tiers.
+type Strategy uint8
+
+const (
+	// StrategyDefault uses the selected small, medium, or large word lists.
+	StrategyDefault Strategy = iota
+	// StrategyTolkien uses Tolkien character and place names with themed modifiers.
+	StrategyTolkien
+)
+
 // Type selects a complete goname or one individual word category.
 type Type uint8
 
@@ -48,18 +59,23 @@ type Options struct {
 	// Separator is inserted between words. It may be empty.
 	Separator string
 
-	// Complexity selects a built-in dictionary tier, or a subdirectory tier
-	// beneath WordDirectory.
+	// Complexity selects a built-in dictionary tier, or a matching subdirectory
+	// beneath WordDirectory. It cannot be combined with a themed Strategy.
 	Complexity Complexity
 
-	// Alliterate requires every generated word to begin with the same rune.
+	// Strategy optionally selects a themed word set, or a matching subdirectory
+	// beneath WordDirectory. It cannot be combined with a non-default Complexity.
+	Strategy Strategy
+
+	// Alliterate requires every generated word to begin with the same letter,
+	// ignoring case.
 	Alliterate bool
 
 	// Type selects a complete goname or one individual word category.
 	Type Type
 
-	// WordDirectory optionally names a directory containing adverbs.txt,
-	// adjectives.txt, and names.txt.
+	// WordDirectory optionally names a directory containing the word lists, or
+	// subdirectories named for a selected complexity tier or strategy.
 	WordDirectory string
 }
 

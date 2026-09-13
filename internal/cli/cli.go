@@ -16,17 +16,18 @@ const help = `Generate human-readable random names
 
 Usage: goname [-w|--words INT] [-l|--letters INT]
                 [-s|--separator STR] [-d|--dir STR]
-                [-c|--complexity INT] [-u|--ubuntu]
+                [-c|--complexity INT] [-t|--strategy STR] [-u|--ubuntu]
 
   -w, --words INT       number of words; default: 2
   -l, --letters INT     maximum letters in each word; default: unlimited
   -s, --separator STR   separator between words; default: -
   -d, --dir DIR         custom word-list directory
   -c, --complexity INT  0=small, 1=medium, 2=large
+  -t, --strategy STR    themed word set: tolkien
   -u, --ubuntu          generate an alliterative name
       --adverb          generate one adverb
       --adjective       generate one adjective
-      --name            generate one animal name
+      --name            generate one name word
   -h, --help            show this help
 `
 
@@ -99,6 +100,15 @@ func parse(args []string) (goname.Options, error) {
 			if err != nil {
 				return options, err
 			}
+		case "-t", "--strategy":
+			value, err := optionValue(args, &index, option)
+			if err != nil {
+				return options, err
+			}
+			options.Strategy, err = parseStrategy(value)
+			if err != nil {
+				return options, err
+			}
 		case "-u", "--ubuntu":
 			options.Alliterate = true
 		case "--adverb":
@@ -121,6 +131,13 @@ func parse(args []string) (goname.Options, error) {
 		options.Type = goname.TypeAdverb
 	}
 	return options, nil
+}
+
+func parseStrategy(value string) (goname.Strategy, error) {
+	if value == "tolkien" {
+		return goname.StrategyTolkien, nil
+	}
+	return goname.StrategyDefault, fmt.Errorf("strategy must be tolkien, got: %s", value)
 }
 
 func optionValue(args []string, index *int, option string) (string, error) {

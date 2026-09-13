@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -25,7 +26,24 @@ var builtInCache struct {
 	words map[Complexity]wordLists
 }
 
+var tolkienCache struct {
+	sync.Once
+	words wordLists
+	err   error
+}
+
 func loadWordLists(options Options) (wordLists, error) {
+	if options.Strategy == StrategyTolkien {
+		if options.WordDirectory == "" {
+			return loadBuiltInTolkien()
+		}
+		directory, err := filepath.Abs(options.WordDirectory)
+		if err != nil {
+			return wordLists{}, fmt.Errorf("resolve word directory: %w", err)
+		}
+		return loadDirectory(filepath.Join(filepath.Clean(directory), "tolkien"))
+	}
+
 	if options.WordDirectory == "" {
 		complexity := options.Complexity
 		if complexity == ComplexityDefault {
@@ -56,19 +74,66 @@ func loadBuiltIn(complexity Complexity) (wordLists, error) {
 	}
 
 	directory := complexityDirectory(complexity)
-	words, err := loadFiles(func(name string) ([]byte, error) {
-		path := "words/" + directory + "/" + name
-		data, readErr := embeddedWords.ReadFile(path)
-		if readErr != nil {
-			return nil, fmt.Errorf("missing built-in word list: %s", path)
-		}
-		return data, nil
-	})
+	words, err := loadEmbeddedDirectory(directory)
 	if err != nil {
 		return wordLists{}, err
 	}
 	builtInCache.words[complexity] = words
 	return words, nil
+}
+
+func loadBuiltInTolkien() (wordLists, error) {
+	tolkienCache.Do(func() {
+		base, err := loadBuiltIn(ComplexitySmall)
+		if err != nil {
+			tolkienCache.err = err
+			return
+		}
+		extra, err := loadEmbeddedDirectory("tolkien")
+		if err != nil {
+			tolkienCache.err = err
+			return
+		}
+		tolkienCache.words = wordLists{
+			adverbs:    mergeWords(base.adverbs, extra.adverbs),
+			adjectives: mergeWords(base.adjectives, extra.adjectives),
+			names:      extra.names,
+		}
+	})
+	return tolkienCache.words, tolkienCache.err
+}
+
+func loadEmbeddedDirectory(directory string) (wordLists, error) {
+	return loadFiles(func(name string) ([]byte, error) {
+		path := "words/" + directory + "/" + name
+		data, err := embeddedWords.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("missing built-in word list: %s", path)
+		}
+		return data, nil
+	})
+}
+
+func mergeWords(base, extra []string) []string {
+	seen := make(map[string]struct{}, len(base)+len(extra))
+	merged := make([]string, 0, len(base)+len(extra))
+	for _, words := range [][]string{base, extra} {
+		for _, word := range words {
+			if _, ok := seen[word]; ok {
+				continue
+			}
+			seen[word] = struct{}{}
+			merged = append(merged, word)
+		}
+	}
+	sort.Slice(merged, func(i, j int) bool {
+		left, right := strings.ToLower(merged[i]), strings.ToLower(merged[j])
+		if left == right {
+			return merged[i] < merged[j]
+		}
+		return left < right
+	})
+	return merged
 }
 
 func loadDirectory(directory string) (wordLists, error) {

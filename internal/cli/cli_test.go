@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/blater/goname"
 )
 
 func TestSupportsLongOptions(t *testing.T) {
@@ -53,12 +55,28 @@ func TestSupportsLengthComplexityAndUbuntuOptions(t *testing.T) {
 	}
 }
 
+func TestSupportsTolkienStrategy(t *testing.T) {
+	options, err := parse([]string{"--strategy", "tolkien"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.Strategy != goname.StrategyTolkien {
+		t.Fatalf("strategy = %v, want Tolkien", options.Strategy)
+	}
+	result := run("-t", "tolkien", "--name")
+	if result.exitCode != 0 || result.stdout == "" || result.stderr != "" {
+		t.Fatalf("run() = %+v", result)
+	}
+}
+
 func TestReportsInvalidArguments(t *testing.T) {
 	tests := []struct {
 		args    []string
 		message string
 	}{
 		{[]string{"--complexity", "7"}, "complexity must be 0"},
+		{[]string{"--strategy", "fantasy"}, "strategy must be tolkien"},
+		{[]string{"--complexity", "1", "--strategy", "tolkien"}, "cannot be combined with a complexity tier"},
 		{[]string{"--words", "0"}, "words must be a positive integer"},
 		{[]string{"--words", "2147483648"}, "words is too large"},
 		{[]string{"--letters", "-1"}, "letters must be a positive integer"},
@@ -78,7 +96,7 @@ func TestHelpIsSelfContainedAndTakesPrecedence(t *testing.T) {
 	if result.exitCode != 0 || result.stderr != "" {
 		t.Fatalf("run() = %+v", result)
 	}
-	for _, expected := range []string{"Usage: goname", "--ubuntu", "--adverb"} {
+	for _, expected := range []string{"Usage: goname", "--ubuntu", "--adverb", "--strategy"} {
 		if !strings.Contains(result.stdout, expected) {
 			t.Errorf("help does not contain %q", expected)
 		}
