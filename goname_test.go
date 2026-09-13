@@ -135,7 +135,7 @@ func TestTolkienStrategyAddsThemedWordsAndNames(t *testing.T) {
 			t.Errorf("Tolkien adjectives do not contain %q", want)
 		}
 	}
-	for _, want := range []string{"Aragorn", "Fëanor", "Gandalf", "Lúthien", "Smaug"} {
+	for _, want := range []string{"Aragorn", "Feanor", "Gandalf", "Luthien", "Smaug"} {
 		if !containsWord(words.names, want) {
 			t.Errorf("Tolkien names do not contain %q", want)
 		}
