@@ -5,11 +5,13 @@ package goname
 import (
 	"crypto/sha256"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -102,6 +104,132 @@ func TestSupportsIndividualWordTypes(t *testing.T) {
 	}
 }
 
+func TestTokenStrategiesUseTheirDefaultsAndWordControls(t *testing.T) {
+	tests := []struct {
+		name     string
+		strategy Strategy
+		length   int
+		valid    func(string) bool
+	}{
+		{"hex", StrategyHex, 4, func(word string) bool { return tokenContainsOnly(word, "0123456789abcdef") }},
+		{"base32", StrategyBase32, 4, func(word string) bool { return tokenContainsOnly(word, "0123456789abcdefghjkmnpqrstvwxyz") }},
+		{"ulid", StrategyULID, 26, func(word string) bool { return isValidULID(word) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			options := DefaultOptions()
+			options.Strategy = test.strategy
+			got, err := NewSeededGenerator(12).Generate(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(got, options.Separator) || len(got) != test.length || !test.valid(got) {
+				t.Fatalf("default token = %q, want one valid token", got)
+			}
+
+			options.Words = 3
+			options.Separator = ":"
+			got, err = NewSeededGenerator(12).Generate(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parts := strings.Split(got, ":")
+			if len(parts) != 3 {
+				t.Fatalf("three-word token = %q, want 3 parts", got)
+			}
+			for _, word := range parts {
+				if len(word) != test.length || !test.valid(word) {
+					t.Errorf("invalid %s token %q", test.name, word)
+				}
+			}
+		})
+	}
+}
+
+func TestHexAndBase32MixedCaseAreUppercase(t *testing.T) {
+	for strategy, alphabet := range map[Strategy]string{
+		StrategyHex:    "0123456789ABCDEF",
+		StrategyBase32: "0123456789ABCDEFGHJKMNPQRSTVWXYZ",
+	} {
+		options := DefaultOptions()
+		options.Strategy = strategy
+		options.MixedCase = true
+		got, err := NewSeededGenerator(9).Generate(options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !tokenContainsOnly(got, alphabet) {
+			t.Errorf("strategy %d mixed-case token %q contains non-uppercase symbols", strategy, got)
+		}
+	}
+}
+
+func TestTokenStrategiesCanExplicitlyRequestTwoWords(t *testing.T) {
+	for _, strategy := range []Strategy{StrategyHex, StrategyBase32, StrategyULID} {
+		options := DefaultOptions()
+		options.Strategy = strategy
+		options.Words = 2
+		got, err := NewSeededGenerator(3).Generate(options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if parts := strings.Split(got, options.Separator); len(parts) != 2 {
+			t.Errorf("strategy %d with explicit Words=2 = %q, want two tokens", strategy, got)
+		}
+	}
+}
+
+func TestLettersSetHexAndBase32WidthButDoNotChangeULIDWidth(t *testing.T) {
+	for _, strategy := range []Strategy{StrategyHex, StrategyBase32} {
+		options := DefaultOptions()
+		options.Strategy = strategy
+		options.MaxLetters = 7
+		got, err := NewSeededGenerator(11).Generate(options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 7 {
+			t.Errorf("strategy %d with MaxLetters=7 generated %q (%d chars)", strategy, got, len(got))
+		}
+	}
+
+	options := DefaultOptions()
+	options.Strategy = StrategyULID
+	options.MaxLetters = 3
+	got, err := NewSeededGenerator(11).Generate(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isValidULID(got) {
+		t.Fatalf("ULID with MaxLetters=3 = %q, want fixed-width ULID", got)
+	}
+}
+
+func TestULIDContainsCurrentTimestampAndLowercaseCrockfordEncoding(t *testing.T) {
+	before := time.Now().UnixMilli()
+	options := DefaultOptions()
+	options.Strategy = StrategyULID
+	got, err := NewSeededGenerator(4).Generate(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now().UnixMilli()
+	if !isValidULID(got) {
+		t.Fatalf("Generate() = %q, want lowercase 26-character ULID", got)
+	}
+	encoded := new(big.Int)
+	for _, character := range got {
+		index := strings.IndexRune("0123456789abcdefghjkmnpqrstvwxyz", character)
+		encoded.Mul(encoded, big.NewInt(32))
+		encoded.Add(encoded, big.NewInt(int64(index)))
+	}
+	encoded.Rsh(encoded, 80)
+	timestamp := encoded.Int64()
+	if timestamp < before || timestamp > after {
+		t.Fatalf("ULID timestamp = %d, want between %d and %d", timestamp, before, after)
+	}
+}
+
 func TestResolvesComplexityBelowCustomDirectory(t *testing.T) {
 	directory := t.TempDir()
 	writeWordsAt(t, filepath.Join(directory, "small"), "aptly", "calm", "ibis")
@@ -163,6 +291,7 @@ func TestTolkienStrategyAddsThemedWordsAndNames(t *testing.T) {
 	}
 
 	options.Type = TypeName
+	options.MixedCase = true
 	got, err := NewSeededGenerator(7).Generate(options)
 	if err != nil {
 		t.Fatal(err)
@@ -182,8 +311,8 @@ func TestTolkienStrategyResolvesCustomDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "ancient-Aragorn" {
-		t.Fatalf("Generate() = %q, want ancient-Aragorn", got)
+	if got != "ancient-aragorn" {
+		t.Fatalf("Generate() = %q, want ancient-aragorn", got)
 	}
 }
 
@@ -194,7 +323,7 @@ func TestRejectsImpossibleConfigurations(t *testing.T) {
 		mutate  func(*Options)
 		message string
 	}{
-		{"zero words", func(o *Options) { o.Words = 0 }, "words must be a positive integer"},
+		{"negative words", func(o *Options) { o.Words = -1 }, "words must be zero or a positive integer"},
 		{"negative length", func(o *Options) { o.MaxLetters = -1 }, "maxLetters must be zero"},
 		{"too short", func(o *Options) { o.MaxLetters = 2 }, "no words satisfy"},
 		{"long separator", func(o *Options) { o.Separator = strings.Repeat("🦉", 101) }, "separator must be"},
@@ -241,8 +370,8 @@ func TestAlliterationMatchesCapitalizedWordsCaseInsensitively(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "Able-Agile-Aragorn" {
-		t.Fatalf("Generate() = %q, want Able-Agile-Aragorn", got)
+	if got != "able-agile-aragorn" {
+		t.Fatalf("Generate() = %q, want able-agile-aragorn", got)
 	}
 }
 
@@ -251,6 +380,7 @@ func TestTolkienStrategyAlliteratesAcrossCapitalizedNames(t *testing.T) {
 	options.Strategy = StrategyTolkien
 	options.Words = 3
 	options.Alliterate = true
+	options.MixedCase = true
 	got, err := NewSeededGenerator(1).Generate(options)
 	if err != nil {
 		t.Fatal(err)
@@ -372,6 +502,23 @@ func containsWord(words []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func tokenContainsOnly(token, alphabet string) bool {
+	if token == "" {
+		return false
+	}
+	for _, character := range token {
+		if !strings.ContainsRune(alphabet, character) {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidULID(token string) bool {
+	return len(token) == 26 && token[0] <= '7' &&
+		tokenContainsOnly(token, "0123456789abcdefghjkmnpqrstvwxyz")
 }
 
 func wordsFromSmall(t *testing.T, category string) []string {

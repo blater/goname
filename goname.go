@@ -25,8 +25,8 @@ const (
 	ComplexityLarge
 )
 
-// Strategy selects a themed word set independently of the standard complexity
-// tiers.
+// Strategy selects a dictionary or token generation adapter independently of
+// the standard complexity tiers.
 type Strategy uint8
 
 const (
@@ -34,6 +34,13 @@ const (
 	StrategyDefault Strategy = iota
 	// StrategyTolkien uses Tolkien character and place names with themed modifiers.
 	StrategyTolkien
+	// StrategyHex generates four-character hexadecimal tokens.
+	StrategyHex
+	// StrategyBase32 generates four-character Crockford Base32 tokens.
+	StrategyBase32
+	// StrategyULID generates 26-character Universally Unique Lexicographically
+	// Sortable Identifiers.
+	StrategyULID
 )
 
 // Type selects a complete goname or one individual word category.
@@ -49,27 +56,38 @@ const (
 // Options controls name generation. Start with DefaultOptions and change the
 // fields required by the application.
 type Options struct {
-	// Words is the number of words in a complete goname.
+	// Words is the number of words in a complete goname. Zero selects the
+	// strategy's default: two for dictionary strategies and one for token
+	// strategies.
 	Words int
 
-	// MaxLetters is the maximum number of Unicode code points per word. Zero
-	// means unlimited.
+	// MaxLetters is the maximum number of Unicode code points per dictionary
+	// word. For hex and Base32 strategies, a positive value sets token width;
+	// ULIDs retain their fixed width. Zero selects each strategy's normal width.
 	MaxLetters int
 
 	// Separator is inserted between words. It may be empty.
 	Separator string
 
+	// Prefix is prepended to the generated name, followed by Separator. It does
+	// not count toward Words.
+	Prefix string
+
 	// Complexity selects a built-in dictionary tier, or a matching subdirectory
-	// beneath WordDirectory. It cannot be combined with a themed Strategy.
+	// beneath WordDirectory. It cannot be combined with a non-default Strategy.
 	Complexity Complexity
 
-	// Strategy optionally selects a themed word set, or a matching subdirectory
-	// beneath WordDirectory. It cannot be combined with a non-default Complexity.
+	// Strategy selects a word-list or token-generation adapter. It cannot be
+	// combined with a non-default Complexity.
 	Strategy Strategy
 
-	// Alliterate requires every generated word to begin with the same letter,
+	// Alliterate requires every dictionary word to begin with the same letter,
 	// ignoring case.
 	Alliterate bool
+
+	// MixedCase preserves dictionary word casing and emits token strategies in
+	// uppercase. When false, generated words and tokens are lowercase.
+	MixedCase bool
 
 	// Type selects a complete goname or one individual word category.
 	Type Type
@@ -79,10 +97,11 @@ type Options struct {
 	WordDirectory string
 }
 
-// DefaultOptions returns the standard two-word configuration.
+// DefaultOptions returns the standard configuration. The default word count
+// is selected by the strategy: two for dictionary strategies and one for
+// token strategies.
 func DefaultOptions() Options {
 	return Options{
-		Words:      2,
 		Separator:  "-",
 		Complexity: ComplexityDefault,
 		Type:       TypeGoname,
@@ -140,6 +159,9 @@ func Generate() (string, error) {
 
 // GenerateWords returns a goname containing words words.
 func GenerateWords(words int) (string, error) {
+	if words < 1 {
+		return "", errors.New("words must be a positive integer")
+	}
 	options := DefaultOptions()
 	options.Words = words
 	return defaultGenerator.Generate(options)
@@ -148,6 +170,9 @@ func GenerateWords(words int) (string, error) {
 // GenerateSeparated returns a goname with the requested word count and
 // separator.
 func GenerateSeparated(words int, separator string) (string, error) {
+	if words < 1 {
+		return "", errors.New("words must be a positive integer")
+	}
 	options := DefaultOptions()
 	options.Words = words
 	options.Separator = separator
@@ -164,6 +189,21 @@ func (g *Generator) Generate(options Options) (string, error) {
 	if err := validate(options); err != nil {
 		return "", err
 	}
+	adapter := strategyAdapterFor(options.Strategy)
+	if options.Words == 0 {
+		options.Words = adapter.defaultWords()
+	}
+	name, err := adapter.generate(g, options)
+	if err != nil {
+		return "", err
+	}
+	if options.Prefix != "" {
+		name = options.Prefix + options.Separator + name
+	}
+	return name, nil
+}
+
+func (g *Generator) generateDictionary(options Options) (string, error) {
 	words, err := loadWordLists(options)
 	if err != nil {
 		return "", err
@@ -171,11 +211,14 @@ func (g *Generator) Generate(options Options) (string, error) {
 
 	switch options.Type {
 	case TypeAdverb:
-		return g.chooseEligible(words.adverbs, options.MaxLetters)
+		word, err := g.chooseEligible(words.adverbs, options.MaxLetters)
+		return applyCase(word, options.MixedCase), err
 	case TypeAdjective:
-		return g.chooseEligible(words.adjectives, options.MaxLetters)
+		word, err := g.chooseEligible(words.adjectives, options.MaxLetters)
+		return applyCase(word, options.MixedCase), err
 	case TypeName:
-		return g.chooseEligible(words.names, options.MaxLetters)
+		word, err := g.chooseEligible(words.names, options.MaxLetters)
+		return applyCase(word, options.MixedCase), err
 	case TypeGoname:
 		return g.generateGoname(words, options)
 	default:
@@ -225,7 +268,7 @@ func (g *Generator) generateGoname(words wordLists, options Options) (string, er
 		if chooseErr != nil {
 			return "", chooseErr
 		}
-		selected = append(selected, word)
+		selected = append(selected, applyCase(word, options.MixedCase))
 	}
 	return join(selected, options.Separator), nil
 }
@@ -242,11 +285,19 @@ func (g *Generator) choose(candidates []string) (string, error) {
 	if len(candidates) == 0 {
 		return "", errors.New("no eligible words")
 	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	index, err := g.intn(len(candidates))
+	index, err := g.randomIndex(len(candidates))
 	if err != nil {
 		return "", err
 	}
 	return candidates[index], nil
+}
+
+func (g *Generator) randomIndex(n int) (int, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	index, err := g.intn(n)
+	if err != nil {
+		return 0, err
+	}
+	return index, nil
 }

@@ -12,8 +12,8 @@ import (
 )
 
 func validate(options Options) error {
-	if options.Words < 1 {
-		return errors.New("words must be a positive integer")
+	if options.Words < 0 {
+		return errors.New("words must be zero or a positive integer")
 	}
 	if options.MaxLetters < 0 {
 		return errors.New("maxLetters must be zero or a positive integer")
@@ -24,7 +24,7 @@ func validate(options Options) error {
 	if options.Complexity > ComplexityLarge {
 		return fmt.Errorf("invalid complexity: %d", options.Complexity)
 	}
-	if options.Strategy > StrategyTolkien {
+	if options.Strategy > StrategyULID {
 		return fmt.Errorf("invalid strategy: %d", options.Strategy)
 	}
 	if options.Strategy != StrategyDefault && options.Complexity != ComplexityDefault {
@@ -77,9 +77,7 @@ func (g *Generator) chooseInitial(categories [][]string) (rune, error) {
 	}
 	sort.Slice(initials, func(i, j int) bool { return initials[i] < initials[j] })
 
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	index, err := g.intn(len(initials))
+	index, err := g.randomIndex(len(initials))
 	if err != nil {
 		return 0, err
 	}
@@ -104,4 +102,11 @@ func normalizedInitial(word string) rune {
 
 func join(words []string, separator string) string {
 	return strings.Join(words, separator)
+}
+
+func applyCase(word string, mixedCase bool) string {
+	if mixedCase {
+		return word
+	}
+	return strings.ToLower(word)
 }
