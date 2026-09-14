@@ -15,16 +15,19 @@ import (
 const help = `Generate human-readable random names
 
 Usage: goname [-w|--words INT] [-l|--letters INT]
-                [-s|--separator STR] [-d|--dir STR]
+                [-s|--separator STR] [-p|--prefix STR] [-d|--dir STR]
                 [-c|--complexity INT] [-t|--strategy STR] [-u|--ubuntu]
+                [-m|--mixedcase]
 
-  -w, --words INT       number of words; default: 2
-  -l, --letters INT     maximum letters in each word; default: unlimited
+  -w, --words INT       number of words; default: 2 (1 for token strategies)
+  -l, --letters INT     word limit; token width for hex/base32, ignored by ulid
   -s, --separator STR   separator between words; default: -
+  -p, --prefix STR      prefix before the generated name
   -d, --dir DIR         custom word-list directory
   -c, --complexity INT  0=small, 1=medium, 2=large
-  -t, --strategy STR    themed word set: tolkien
+  -t, --strategy STR    generation strategy: tolkien, hex, base32, ulid
   -u, --ubuntu          generate an alliterative name
+  -m, --mixedcase       preserve dictionary case; uppercase generated tokens
       --adverb          generate one adverb
       --adjective       generate one adjective
       --name            generate one name word
@@ -85,6 +88,12 @@ func parse(args []string) (goname.Options, error) {
 				return options, err
 			}
 			options.Separator = value
+		case "-p", "--prefix":
+			value, err := optionValue(args, &index, option)
+			if err != nil {
+				return options, err
+			}
+			options.Prefix = value
 		case "-d", "--dir":
 			value, err := optionValue(args, &index, option)
 			if err != nil {
@@ -111,6 +120,8 @@ func parse(args []string) (goname.Options, error) {
 			}
 		case "-u", "--ubuntu":
 			options.Alliterate = true
+		case "-m", "--mixedcase":
+			options.MixedCase = true
 		case "--adverb":
 			adverb = true
 		case "--adjective":
@@ -134,10 +145,17 @@ func parse(args []string) (goname.Options, error) {
 }
 
 func parseStrategy(value string) (goname.Strategy, error) {
-	if value == "tolkien" {
+	switch value {
+	case "tolkien":
 		return goname.StrategyTolkien, nil
+	case "hex":
+		return goname.StrategyHex, nil
+	case "base32":
+		return goname.StrategyBase32, nil
+	case "ulid":
+		return goname.StrategyULID, nil
 	}
-	return goname.StrategyDefault, fmt.Errorf("strategy must be tolkien, got: %s", value)
+	return goname.StrategyDefault, fmt.Errorf("strategy must be tolkien, hex, base32, or ulid, got: %s", value)
 }
 
 func optionValue(args []string, index *int, option string) (string, error) {
