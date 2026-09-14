@@ -11,6 +11,7 @@ import (
 	"math/big"
 	mathrand "math/rand"
 	"sync"
+	"time"
 )
 
 // Complexity selects a dictionary tier.
@@ -39,7 +40,7 @@ const (
 	// StrategyBase32 generates four-character Crockford Base32 tokens.
 	StrategyBase32
 	// StrategyULID generates 26-character Universally Unique Lexicographically
-	// Sortable Identifiers.
+	// Sortable Identifiers, monotonic within a Generator instance.
 	StrategyULID
 )
 
@@ -115,10 +116,15 @@ type Random interface {
 }
 
 // Generator generates names using a configurable source of randomness. A
-// Generator is safe for concurrent use.
+// Generator is safe for concurrent use, and its ULIDs are monotonic within
+// that Generator instance.
 type Generator struct {
-	mu   sync.Mutex
-	intn func(int) (int, error)
+	mu                sync.Mutex
+	intn              func(int) (int, error)
+	now               func() time.Time
+	hasLastULID       bool
+	lastULIDTimestamp uint64
+	lastULIDEntropy   [10]byte
 }
 
 // NewGenerator returns a generator backed by cryptographically secure
@@ -130,11 +136,12 @@ func NewGenerator() *Generator {
 			return 0, fmt.Errorf("read secure randomness: %w", err)
 		}
 		return int(value.Int64()), nil
-	}}
+	}, now: time.Now}
 }
 
-// NewSeededGenerator returns a deterministic generator for repeatable tests
-// and workloads.
+// NewSeededGenerator returns a generator with a repeatable pseudorandom
+// sequence. ULID timestamps still use the current time, and ULID monotonic
+// state is local to this generator.
 func NewSeededGenerator(seed int64) *Generator {
 	return NewGeneratorWithRandom(mathrand.New(mathrand.NewSource(seed)))
 }
@@ -147,7 +154,7 @@ func NewGeneratorWithRandom(random Random) *Generator {
 	}
 	return &Generator{intn: func(n int) (int, error) {
 		return random.Intn(n), nil
-	}}
+	}, now: time.Now}
 }
 
 var defaultGenerator = NewGenerator()
