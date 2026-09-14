@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -217,16 +218,60 @@ func TestULIDContainsCurrentTimestampAndLowercaseCrockfordEncoding(t *testing.T)
 	if !isValidULID(got) {
 		t.Fatalf("Generate() = %q, want lowercase 26-character ULID", got)
 	}
-	encoded := new(big.Int)
-	for _, character := range got {
-		index := strings.IndexRune("0123456789abcdefghjkmnpqrstvwxyz", character)
-		encoded.Mul(encoded, big.NewInt(32))
-		encoded.Add(encoded, big.NewInt(int64(index)))
-	}
+	encoded := ulidInteger(got)
 	encoded.Rsh(encoded, 80)
 	timestamp := encoded.Int64()
 	if timestamp < before || timestamp > after {
 		t.Fatalf("ULID timestamp = %d, want between %d and %d", timestamp, before, after)
+	}
+}
+
+func TestULIDsAreMonotonicWithinOneMillisecond(t *testing.T) {
+	generator := NewSeededGenerator(23)
+	now := time.UnixMilli(1_700_000_000_000)
+	generator.now = func() time.Time { return now }
+	options := DefaultOptions()
+	options.Strategy = StrategyULID
+
+	previous := new(big.Int)
+	for index := 0; index < 10; index++ {
+		got, err := generator.Generate(options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		current := ulidInteger(got)
+		if index > 0 && current.Cmp(previous) <= 0 {
+			t.Fatalf("ULID %q is not greater than its predecessor", got)
+		}
+		previous = current
+	}
+}
+
+func TestULIDMonotonicitySurvivesClockRollback(t *testing.T) {
+	times := []time.Time{
+		time.UnixMilli(1_700_000_000_001),
+		time.UnixMilli(1_700_000_000_000),
+	}
+	call := 0
+	generator := NewSeededGenerator(24)
+	generator.now = func() time.Time {
+		now := times[call]
+		call++
+		return now
+	}
+	options := DefaultOptions()
+	options.Strategy = StrategyULID
+
+	first, err := generator.Generate(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := generator.Generate(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ulidInteger(second).Cmp(ulidInteger(first)) <= 0 {
+		t.Fatalf("ULID after clock rollback %q is not greater than %q", second, first)
 	}
 }
 
@@ -519,6 +564,16 @@ func tokenContainsOnly(token, alphabet string) bool {
 func isValidULID(token string) bool {
 	return len(token) == 26 && token[0] <= '7' &&
 		tokenContainsOnly(token, "0123456789abcdefghjkmnpqrstvwxyz")
+}
+
+func ulidInteger(token string) *big.Int {
+	encoded := new(big.Int)
+	for _, character := range token {
+		index := strings.IndexRune(crockfordBase32, unicode.ToUpper(character))
+		encoded.Mul(encoded, big.NewInt(32))
+		encoded.Add(encoded, big.NewInt(int64(index)))
+	}
+	return encoded
 }
 
 func wordsFromSmall(t *testing.T, category string) []string {

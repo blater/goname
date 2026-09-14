@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"time"
 )
 
 const crockfordBase32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+const maxULIDTimestamp = (1 << 48) - 1
 
 type strategyAdapter interface {
 	defaultWords() int
@@ -70,22 +71,44 @@ func (a tokenAdapter) generateWord(g *Generator, length int) (string, error) {
 }
 
 func (g *Generator) generateULID() (string, error) {
-	var data [16]byte
-	timestamp := uint64(time.Now().UnixMilli())
-	for index := 5; index >= 0; index-- {
-		data[index] = byte(timestamp)
-		timestamp >>= 8
-	}
-
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	for index := 6; index < len(data); index++ {
-		value, err := g.intn(256)
-		if err != nil {
-			return "", fmt.Errorf("read ULID randomness: %w", err)
-		}
-		data[index] = byte(value)
+
+	nowMillis := g.now().UnixMilli()
+	if nowMillis < 0 || nowMillis > maxULIDTimestamp {
+		return "", fmt.Errorf("ULID timestamp is out of range: %d", nowMillis)
 	}
+	timestamp := uint64(nowMillis)
+	var entropy [10]byte
+	if g.hasLastULID && timestamp <= g.lastULIDTimestamp {
+		timestamp = g.lastULIDTimestamp
+		entropy = g.lastULIDEntropy
+		if !incrementULIDEntropy(&entropy) {
+			if timestamp == maxULIDTimestamp {
+				return "", fmt.Errorf("ULID monotonic entropy overflow at maximum timestamp")
+			}
+			timestamp++
+		}
+	} else {
+		for index := range entropy {
+			value, err := g.intn(256)
+			if err != nil {
+				return "", fmt.Errorf("read ULID randomness: %w", err)
+			}
+			entropy[index] = byte(value)
+		}
+	}
+
+	var data [16]byte
+	encodedTimestamp := timestamp
+	for index := 5; index >= 0; index-- {
+		data[index] = byte(encodedTimestamp)
+		encodedTimestamp >>= 8
+	}
+	copy(data[6:], entropy[:])
+	g.hasLastULID = true
+	g.lastULIDTimestamp = timestamp
+	g.lastULIDEntropy = entropy
 
 	// A ULID encodes 128 bits in 26 base32 characters, padding the top two
 	// bits with zero. This makes the first character range from 0 through 7.
@@ -98,6 +121,16 @@ func (g *Generator) generateULID() (string, error) {
 		value.Rsh(value, 5)
 	}
 	return string(encoded), nil
+}
+
+func incrementULIDEntropy(entropy *[10]byte) bool {
+	for index := len(entropy) - 1; index >= 0; index-- {
+		entropy[index]++
+		if entropy[index] != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func strategyAdapterFor(strategy Strategy) strategyAdapter {

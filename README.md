@@ -75,9 +75,12 @@ four-character tokens from Crockford's alphabet,
 `0123456789ABCDEFGHJKMNPQRSTVWXYZ`, which excludes I, L, O, and U. Both are
 lowercase by default. A positive `--letters` value sets their token width.
 `ulid` generates a standard 26-character ULID using the current time and random
-entropy; its fixed width is unaffected by `--letters`. All three token
-strategies generate one token by default. Use `--words` and `--separator` to
-generate multiple tokens.
+entropy; its fixed width is unaffected by `--letters`. Within one `Generator`
+instance, generated ULIDs are strictly increasing lexicographically, including
+repeated calls in the same millisecond. Monotonic state is not shared between
+separate generator instances or processes. All three token strategies generate
+one token by default. Use `--words` and `--separator` to generate multiple
+tokens.
 
 Dictionary words are lowercase by default. Pass `-m` or `--mixedcase` to
 preserve their spelling from the selected word lists. Token output is lowercase
