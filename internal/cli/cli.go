@@ -63,59 +63,13 @@ func parse(args []string) (goname.Options, error) {
 	for index := 0; index < len(args); index++ {
 		option := args[index]
 		switch option {
-		case "-w", "--words":
+		case "-w", "--words", "-l", "--letters", "-s", "--separator",
+			"-p", "--prefix", "-d", "--dir", "-c", "--complexity", "-t", "--strategy":
 			value, err := optionValue(args, &index, option)
 			if err != nil {
 				return options, err
 			}
-			options.Words, err = parsePositive(value, "words")
-			if err != nil {
-				return options, err
-			}
-		case "-l", "--letters":
-			value, err := optionValue(args, &index, option)
-			if err != nil {
-				return options, err
-			}
-			options.MaxLetters, err = parseNonNegative(value, "letters")
-			if err != nil {
-				return options, err
-			}
-			options.MaxLetters = max(3, options.MaxLetters)
-		case "-s", "--separator":
-			value, err := optionValue(args, &index, option)
-			if err != nil {
-				return options, err
-			}
-			options.Separator = value
-		case "-p", "--prefix":
-			value, err := optionValue(args, &index, option)
-			if err != nil {
-				return options, err
-			}
-			options.Prefix = value
-		case "-d", "--dir":
-			value, err := optionValue(args, &index, option)
-			if err != nil {
-				return options, err
-			}
-			options.WordDirectory = value
-		case "-c", "--complexity":
-			value, err := optionValue(args, &index, option)
-			if err != nil {
-				return options, err
-			}
-			options.Complexity, err = parseComplexity(value)
-			if err != nil {
-				return options, err
-			}
-		case "-t", "--strategy":
-			value, err := optionValue(args, &index, option)
-			if err != nil {
-				return options, err
-			}
-			options.Strategy, err = parseStrategy(value)
-			if err != nil {
+			if err := setValue(&options, option, value); err != nil {
 				return options, err
 			}
 		case "-u", "--ubuntu":
@@ -142,6 +96,30 @@ func parse(args []string) (goname.Options, error) {
 		options.Type = goname.TypeAdverb
 	}
 	return options, nil
+}
+
+// setValue converts a value-bearing option after the parser has consumed it.
+func setValue(options *goname.Options, option, value string) (err error) {
+	switch option {
+	case "-w", "--words":
+		options.Words, err = parsePositive(value, "words")
+	case "-l", "--letters":
+		options.MaxLetters, err = parseNonNegative(value, "letters")
+		if err == nil {
+			options.MaxLetters = max(3, options.MaxLetters)
+		}
+	case "-s", "--separator":
+		options.Separator = value
+	case "-p", "--prefix":
+		options.Prefix = value
+	case "-d", "--dir":
+		options.WordDirectory = value
+	case "-c", "--complexity":
+		options.Complexity, err = parseComplexity(value)
+	case "-t", "--strategy":
+		options.Strategy, err = parseStrategy(value)
+	}
+	return err
 }
 
 func parseStrategy(value string) (goname.Strategy, error) {

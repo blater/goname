@@ -298,34 +298,22 @@ func TestTolkienStrategyAddsThemedWordsAndNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"quickly", "anciently"} {
-		if !containsWord(words.adverbs, want) {
-			t.Errorf("Tolkien adverbs do not contain %q", want)
-		}
-	}
-	for _, want := range []string{"calm", "grandeur", "wielding"} {
-		if !containsWord(words.adjectives, want) {
-			t.Errorf("Tolkien adjectives do not contain %q", want)
-		}
-	}
-	for _, want := range []string{"Aragorn", "Feanor", "Gandalf", "Luthien", "Smaug"} {
-		if !containsWord(words.names, want) {
-			t.Errorf("Tolkien names do not contain %q", want)
-		}
-	}
 	for _, category := range []struct {
 		name string
-		base []string
 		got  []string
+		want []string
 	}{
-		{"adverbs", wordsFromSmall(t, "adverbs"), words.adverbs},
-		{"adjectives", wordsFromSmall(t, "adjectives"), words.adjectives},
+		{"adverbs", words.adverbs, append(wordsFromSmall(t, "adverbs"), "quickly", "anciently")},
+		{"adjectives", words.adjectives, append(wordsFromSmall(t, "adjectives"), "calm", "grandeur", "wielding")},
+		{"names", words.names, []string{"Aragorn", "Feanor", "Gandalf", "Luthien", "Smaug"}},
 	} {
-		for _, word := range category.base {
-			if !containsWord(category.got, word) {
-				t.Errorf("Tolkien %s do not include small-list word %q", category.name, word)
+		t.Run(category.name, func(t *testing.T) {
+			for _, want := range category.want {
+				if !containsWord(category.got, want) {
+					t.Errorf("Tolkien %s do not contain %q", category.name, want)
+				}
 			}
-		}
+		})
 	}
 	seenNames := make(map[string]struct{}, len(words.names))
 	for _, name := range words.names {

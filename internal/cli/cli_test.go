@@ -36,14 +36,14 @@ func TestSupportsPrefixWithDictionaryAndTokenStrategies(t *testing.T) {
 	}
 
 	result = run("--prefix", "ticket", "--separator", "_", "--strategy", "tolkien")
-	parts := strings.Split(strings.TrimSpace(result.stdout), "_")
-	if result.exitCode != 0 || result.stderr != "" || len(parts) != 3 || parts[0] != "ticket" {
+	parts := strings.Split(successfulOutput(t, result), "_")
+	if len(parts) != 3 || parts[0] != "ticket" {
 		t.Fatalf("Tolkien prefix run() = %+v, want prefix plus two words", result)
 	}
 
 	result = run("-p", "ticket", "--strategy", "hex", "--words", "2")
-	parts = strings.Split(strings.TrimSpace(result.stdout), "-")
-	if result.exitCode != 0 || result.stderr != "" || len(parts) != 3 || parts[0] != "ticket" {
+	parts = strings.Split(successfulOutput(t, result), "-")
+	if len(parts) != 3 || parts[0] != "ticket" {
 		t.Fatalf("token prefix run() = %+v, want prefix plus two tokens", result)
 	}
 }
@@ -107,31 +107,17 @@ func TestSupportsTokenStrategiesAndTheirWordCounts(t *testing.T) {
 			}
 
 			result := run("--strategy", test.name)
-			word := strings.TrimSpace(result.stdout)
-			if result.exitCode != 0 || result.stderr != "" || len(word) != test.length || !onlyTokenChars(word, test.alphabet) {
-				t.Fatalf("default run() = %+v, want one %d-character token", result, test.length)
-			}
+			assertTokens(t, successfulOutput(t, result), ":", 1, test.length, test.alphabet)
 
 			result = run("--strategy", test.name, "--words", "2", "--separator", ":", "--mixedcase")
-			parts := strings.Split(strings.TrimSpace(result.stdout), ":")
-			if result.exitCode != 0 || result.stderr != "" || len(parts) != 2 {
-				t.Fatalf("two-token run() = %+v, want two tokens", result)
-			}
-			for _, part := range parts {
-				if len(part) != test.length || !onlyTokenChars(part, strings.ToUpper(test.alphabet)) {
-					t.Errorf("mixed-case token %q has invalid length or symbols", part)
-				}
-			}
+			assertTokens(t, successfulOutput(t, result), ":", 2, test.length, strings.ToUpper(test.alphabet))
 
 			result = run("--strategy", test.name, "--letters", "6")
-			word = strings.TrimSpace(result.stdout)
 			wantLength := 6
 			if test.strategy == goname.StrategyULID {
 				wantLength = 26
 			}
-			if result.exitCode != 0 || result.stderr != "" || len(word) != wantLength {
-				t.Errorf("run() with --letters 6 = %+v, want a %d-character token", result, wantLength)
-			}
+			assertTokens(t, successfulOutput(t, result), ":", 1, wantLength, test.alphabet)
 		})
 	}
 }
@@ -203,6 +189,27 @@ func run(args ...string) result {
 	var stdout, stderr bytes.Buffer
 	exitCode := Run(args, &stdout, &stderr)
 	return result{exitCode: exitCode, stdout: stdout.String(), stderr: stderr.String()}
+}
+
+func successfulOutput(t *testing.T, result result) string {
+	t.Helper()
+	if result.exitCode != 0 || result.stderr != "" {
+		t.Fatalf("run() = %+v, want success with empty stderr", result)
+	}
+	return strings.TrimSpace(result.stdout)
+}
+
+func assertTokens(t *testing.T, output, separator string, count, width int, alphabet string) {
+	t.Helper()
+	parts := strings.Split(output, separator)
+	if len(parts) != count {
+		t.Fatalf("output %q has %d tokens, want %d", output, len(parts), count)
+	}
+	for _, part := range parts {
+		if len(part) != width || !onlyTokenChars(part, alphabet) {
+			t.Errorf("token %q must have width %d and use alphabet %q", part, width, alphabet)
+		}
+	}
 }
 
 func onlyTokenChars(token, alphabet string) bool {

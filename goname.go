@@ -166,12 +166,7 @@ func Generate() (string, error) {
 
 // GenerateWords returns a goname containing words words.
 func GenerateWords(words int) (string, error) {
-	if words < 1 {
-		return "", errors.New("words must be a positive integer")
-	}
-	options := DefaultOptions()
-	options.Words = words
-	return defaultGenerator.Generate(options)
+	return GenerateSeparated(words, DefaultOptions().Separator)
 }
 
 // GenerateSeparated returns a goname with the requested word count and
@@ -233,29 +228,37 @@ func (g *Generator) generateDictionary(options Options) (string, error) {
 	}
 }
 
-func (g *Generator) generateGoname(words wordLists, options Options) (string, error) {
+// gonameCategories builds the grammar in selection order, filtering each
+// category once even when multiple adverbs are requested.
+func gonameCategories(words wordLists, options Options) ([][]string, error) {
 	categories := make([][]string, 0, options.Words)
-	if options.Words > 2 {
-		adverbs, err := eligible(words.adverbs, options.MaxLetters)
-		if err != nil {
-			return "", err
+	for _, category := range []struct {
+		words []string
+		count int
+	}{
+		{words.adverbs, max(0, options.Words-2)},
+		{words.adjectives, min(1, max(0, options.Words-1))},
+		{words.names, 1},
+	} {
+		if category.count == 0 {
+			continue
 		}
-		for i := 2; i < options.Words; i++ {
-			categories = append(categories, adverbs)
+		candidates, err := eligible(category.words, options.MaxLetters)
+		if err != nil {
+			return nil, err
+		}
+		for i := 0; i < category.count; i++ {
+			categories = append(categories, candidates)
 		}
 	}
-	if options.Words > 1 {
-		adjectives, err := eligible(words.adjectives, options.MaxLetters)
-		if err != nil {
-			return "", err
-		}
-		categories = append(categories, adjectives)
-	}
-	names, err := eligible(words.names, options.MaxLetters)
+	return categories, nil
+}
+
+func (g *Generator) generateGoname(words wordLists, options Options) (string, error) {
+	categories, err := gonameCategories(words, options)
 	if err != nil {
 		return "", err
 	}
-	categories = append(categories, names)
 
 	var initial rune
 	if options.Alliterate {
